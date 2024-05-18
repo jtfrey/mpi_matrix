@@ -24,9 +24,15 @@
  *     sparse, bst: a binary search tree of primary indices has each node holding
  *         a binary search tree of secondary indices and values
  *
- *     sparse, compressed: generic implementation of Compressed Sparse Row (CSR) and
- *         Column (CSC) with the variant depending on the row- vs. column-major
- *         aspect of the mpi_matrix_coord
+ *     sparse, compressed: Compressed Sparse Row (CSR) and Column (CSC) with the
+ *         variant depending on the row- vs. column-major aspect of the
+ *         mpi_matrix_coord
+ *
+ *     sparse, coordinate: COOrdinate sparse storage which stores the (i,j,value)
+ *         tuples as independent lists sorted by primary index then secondary
+ *         index (for row-major, i is the primary index); values are located
+ *         using an augmented binary search on the primary index list and a
+ *         subsequent directional scan of the secondary indices
  */
 typedef enum {
     mpi_matrix_storage_type_basic = 0,
@@ -217,8 +223,23 @@ void mpi_matrix_storage_destroy(mpi_matrix_storage_ptr storage);
  */
 #define mpi_matrix_storage_set(C, T, P, E) ((C)->callbacks.set((C), (T), (P), (E)))
 
-
-
+/*
+ * @function mpi_matrix_storage_basic_get_fields
+ *
+ * Retrieve metadata for storage, which must be an instance of the
+ * basic storage type.
+ *
+ * Pass NULL for any of the field arguments that are not required:
+ *
+ *   dimensions: the row, column size of storage
+ *   is_row_major: true if storage orders values by row first
+ *   nvalues: the number of matrix elements present in the flat list
+ *   values: pointer to the flat list of matrix elements; the typeless
+ *      pointer should be cast to float/double (real vs. complex) by
+ *      the caller (exercise caution!!)
+ *
+ * Returns false if storage is NOT of the basic type.
+ */
 bool
 mpi_matrix_storage_basic_get_fields(
     mpi_matrix_storage_ptr  storage,
@@ -226,9 +247,31 @@ mpi_matrix_storage_basic_get_fields(
     bool                    *is_row_major,
     base_int_t              *nvalues,
     const void*             *values);
-    
 
-
+/*
+ * @function mpi_matrix_storage_sparse_compressed_get_fields
+ *
+ * Retrieve metadata for storage, which must be an instance of the
+ * sparse compressed storage type.
+ *
+ * Pass NULL for any of the field arguments that are not required:
+ *
+ *   dimensions: the row, column size of storage
+ *   is_row_major: true if storage orders values by row first
+ *   nvalues: the number of secondary indices and matrix elements present
+ *      in the flat lists of secondary_indices and values
+ *   primary_indices: pointer to the flat list of primary index offsets
+ *      into the secondary_indices flat list; this list is dimensioned to
+ *      the leading dimension of the matrix plus one
+ *   secondary_indices: pointer to the flat list of secondary indices
+ *      associated with values at the same offset; indices in each row
+ *      are sorted in ascending order
+ *   values: pointer to the flat list of matrix elements; the typeless
+ *      pointer should be cast to float/double (real vs. complex) by
+ *      the caller (exercise caution!!)
+ *
+ * Returns false if storage is NOT of the sparse compressed type.
+ */
 bool
 mpi_matrix_storage_sparse_compressed_get_fields(
     mpi_matrix_storage_ptr  storage,
@@ -239,6 +282,17 @@ mpi_matrix_storage_sparse_compressed_get_fields(
     const base_int_t*       *secondary_indices,
     const void*             *values);
 
+/*
+ * @function mpi_matrix_storage_sparse_bst_to_compressed
+ *
+ * Convert a binary search tree sparse matrix to the equivalent matrix
+ * in sparse compressed format.
+ *
+ * If successful, *out_storage is set to the new instance of
+ * mpi_matrix_storage and true is returned.
+ *
+ * Returns false otherwise.
+ */
 bool
 mpi_matrix_storage_sparse_bst_to_compressed(
     mpi_matrix_storage_ptr      in_storage,
