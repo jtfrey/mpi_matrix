@@ -34,7 +34,7 @@ __mpi_matrix_coord_full_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_full_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -44,7 +44,7 @@ __mpi_matrix_coord_full_index_status(
 bool
 __mpi_matrix_coord_full_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              *p
 )
 {
@@ -54,11 +54,11 @@ __mpi_matrix_coord_full_index_reduce(
 base_int_t
 __mpi_matrix_coord_full_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
-    if ( is_transpose )
+    if ( orient != mpi_matrix_orient_normal )
         return (coord->is_row_major) ? (p.j * coord->dimensions.j) + p.i :
                                        (p.i * coord->dimensions.i) + p.j;
     return (coord->is_row_major) ? (p.i * coord->dimensions.j) + p.j :
@@ -99,7 +99,7 @@ __mpi_matrix_coord_upper_triangular_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_upper_triangular_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -107,7 +107,7 @@ __mpi_matrix_coord_upper_triangular_index_status(
     
     if ( p.i > p.j ) {
         // If transposed then it's a double-swap:
-        if ( ! is_transpose ) s = mpi_matrix_coord_status_is_defined;
+        if ( orient == mpi_matrix_orient_normal ) s = mpi_matrix_coord_status_is_defined;
     }
     return s;
 }
@@ -115,7 +115,7 @@ __mpi_matrix_coord_upper_triangular_index_status(
 bool
 __mpi_matrix_coord_upper_triangular_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              *p
 )
 {
@@ -124,23 +124,23 @@ __mpi_matrix_coord_upper_triangular_index_reduce(
     // Swap indices if we're in the wrong half:
     if ( p->i > p->j ) {
         // Avoid a double swap:
-        if ( ! is_transpose ) t = p->i, p->i = p->j, p->j = t;
-    } else if ( is_transpose ) t = p->i, p->i = p->j, p->j = t;
+        if ( orient == mpi_matrix_orient_normal ) t = p->i, p->i = p->j, p->j = t;
+    } else if ( orient != mpi_matrix_orient_normal ) t = p->i, p->i = p->j, p->j = t;
     return true;
 }
 
 base_int_t
 __mpi_matrix_coord_upper_triangular_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 { 
     // Swap indices if we're in the wrong half:
     if ( p.i > p.j ) {
         // Avoid a double swap:
-        if ( ! is_transpose ) p = int_pair_make(p.j, p.i);
-    } else if ( is_transpose ) p = int_pair_make(p.j, p.i);
+        if ( orient == mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
+    } else if ( orient != mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
     if ( coord->is_row_major )
         return (p.j - p.i) + (p.i * (2 * coord->dimensions.i - p.i + 1)) / 2;
     return p.i + (p.j * p.j + p.j) / 2;
@@ -179,7 +179,7 @@ __mpi_matrix_coord_lower_triangular_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_lower_triangular_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -187,7 +187,7 @@ __mpi_matrix_coord_lower_triangular_index_status(
     
     if ( p.j > p.i ) {
         // If transposed then it's a double-swap:
-        if ( ! is_transpose ) s = mpi_matrix_coord_status_is_defined;
+        if ( orient == mpi_matrix_orient_normal ) s = mpi_matrix_coord_status_is_defined;
     }
     return s;
 }
@@ -195,7 +195,7 @@ __mpi_matrix_coord_lower_triangular_index_status(
 bool
 __mpi_matrix_coord_lower_triangular_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              *p
 )
 {
@@ -204,23 +204,23 @@ __mpi_matrix_coord_lower_triangular_index_reduce(
     // Swap indices if we're in the wrong half:
     if ( p->j > p->i ) {
         // Avoid a double swap:
-        if ( ! is_transpose ) t = p->i, p->i = p->j, p->j = t;
-    } else if ( is_transpose ) t = p->i, p->i = p->j, p->j = t;
+        if ( orient == mpi_matrix_orient_normal ) t = p->i, p->i = p->j, p->j = t;
+    } else if ( orient != mpi_matrix_orient_normal ) t = p->i, p->i = p->j, p->j = t;
     return true;
 }
 
 base_int_t
 __mpi_matrix_coord_lower_triangular_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     // Swap indices if we're in the wrong half:
     if ( p.j > p.i ) {
         // Avoid a double swap:
-        if ( ! is_transpose ) p = int_pair_make(p.j, p.i);
-    } else if ( is_transpose ) p = int_pair_make(p.j, p.i);
+        if ( orient == mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
+    } else if ( orient != mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
     if ( coord->is_row_major )
         return p.j + (p.i * p.i + p.i) / 2;
     return (p.i - p.j) + (p.j * (2 * coord->dimensions.i - p.j + 1)) / 2;
@@ -275,13 +275,13 @@ __mpi_matrix_coord_band_diagonal_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_band_diagonal_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_coord_status_t           s = mpi_matrix_coord_status_is_defined | mpi_matrix_coord_status_is_unique;
     
-    if ( is_transpose ) p = int_pair_make(p.j, p.i);
+    if ( orient != mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
     
     if ( coord->is_row_major ) {
         if ( (p.j < p.i - coord->k1) || (p.j > p.i + coord->k2) ) s = 0;
@@ -294,11 +294,11 @@ __mpi_matrix_coord_band_diagonal_index_status(
 bool
 __mpi_matrix_coord_band_diagonal_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              *p
 )
 {
-    if ( is_transpose ) {
+    if ( orient != mpi_matrix_orient_normal ) {
         if ( (coord->is_row_major && (p->i < p->j - coord->k1) || (p->i > p->j + coord->k2)) ||
              (!coord->is_row_major && (p->j < p->i - coord->k2) || (p->j > p->i + coord->k1)) )
         {
@@ -315,7 +315,7 @@ __mpi_matrix_coord_band_diagonal_index_reduce(
 base_int_t
 __mpi_matrix_coord_band_diagonal_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t orient,
     int_pair_t              p
 )
 {
@@ -379,7 +379,7 @@ __mpi_matrix_coord_band_diagonal_index_to_offset(
     base_int_t      d = (1 + coord->k1 + coord->k2);
     base_int_t      offset = -1, tmp;
     
-    if ( is_transpose ) p = int_pair_make(p.j, p.i);
+    if ( orient != mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
     if ( coord->is_row_major ) {
         if ( (p.j >= p.i - coord->k1) && (p.j <= p.i + coord->k2) ) {
             base_int_t      i_hi = coord->dimensions.i - coord->k2;
@@ -456,12 +456,12 @@ __mpi_matrix_coord_tridiagonal_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_tridiagonal_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_coord_status_t   s = mpi_matrix_coord_status_is_defined | mpi_matrix_coord_status_is_unique;
-    int_pair_t                  P = is_transpose ? int_pair_make(p.j, p.i) : p;
+    int_pair_t                  P = (orient != mpi_matrix_orient_normal) ? int_pair_make(p.j, p.i) : p;
     base_int_t                  d_ij = P.i - P.j;;
     
     // Valid elements of a triadiagonal matrix are such that |i-j| <= 1
@@ -472,11 +472,11 @@ __mpi_matrix_coord_tridiagonal_index_status(
 bool
 __mpi_matrix_coord_tridiagonal_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              *p
 )
 {
-    int_pair_t              P = is_transpose ? int_pair_make(p->j, p->i) : *p;
+    int_pair_t              P = (orient != mpi_matrix_orient_normal) ? int_pair_make(p->j, p->i) : *p;
     base_int_t              d_ij = P.i - P.j;;
     
     // Valid elements of a triadiagonal matrix are such that |i-j| <= 1
@@ -490,13 +490,13 @@ __mpi_matrix_coord_tridiagonal_index_reduce(
 base_int_t
 __mpi_matrix_coord_tridiagonal_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     base_int_t              d_ij;
     
-    if ( is_transpose ) p = int_pair_make(p.j, p.i);
+    if ( orient != mpi_matrix_orient_normal ) p = int_pair_make(p.j, p.i);
     
     // Valid elements of a triadiagonal matrix are such that |i-j| <= 1
     d_ij = p.i - p.j;
@@ -532,7 +532,7 @@ __mpi_matrix_coord_diagonal_element_count(
 mpi_matrix_coord_status_t
 __mpi_matrix_coord_diagonal_index_status(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t orient,
     int_pair_t              p
 )
 {
@@ -542,7 +542,7 @@ __mpi_matrix_coord_diagonal_index_status(
 bool
 __mpi_matrix_coord_diagonal_index_reduce(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t orient,
     int_pair_t              *p
 )
 {
@@ -552,7 +552,7 @@ __mpi_matrix_coord_diagonal_index_reduce(
 base_int_t
 __mpi_matrix_coord_diagonal_index_to_offset(
     mpi_matrix_coord_ptr    coord,
-    bool                    is_transpose,
+    mpi_matrix_orient_t orient,
     int_pair_t              p
 )
 {

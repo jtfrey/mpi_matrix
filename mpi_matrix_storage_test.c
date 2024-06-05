@@ -29,12 +29,12 @@ main()
             for (p.j = 0; p.j < 10; p.j++ ) {
                 double      v = sqrt((double)p.i * (double)p.i + (1.0 + (double)p.j) * (double)p.j);
                 
-                mpi_matrix_storage_set(m1, false, p, &v);
+                mpi_matrix_storage_set(m1, mpi_matrix_orient_normal, p, &v);
             }
         }
         
-        mpi_matrix_storage_clear(m1, false, int_pair_make(9, 0));
-        mpi_matrix_storage_clear(m1, false, int_pair_make(9, 2));
+        mpi_matrix_storage_clear(m1, mpi_matrix_orient_normal, int_pair_make(9, 0));
+        mpi_matrix_storage_clear(m1, mpi_matrix_orient_normal, int_pair_make(9, 2));
         
         for ( i=0; i < 10000; i++ ) {
             double          v;
@@ -42,7 +42,7 @@ main()
             p.i = 10 + rand() % (c1.dimensions.i - 10);
             p.j = 10 + rand() % (c1.dimensions.j - 10);
             v = sin(p.i + p.j);
-            mpi_matrix_storage_set(m1, false, p, &v);
+            mpi_matrix_storage_set(m1, mpi_matrix_orient_normal, p, &v);
         }
         
         clock_gettime(CLOCK_REALTIME, &t2);
@@ -63,7 +63,7 @@ main()
         for ( p.i=0; p.i < 10; p.i++ ) {
             for (p.j = 0; p.j < 10; p.j++ ) {
                 double      v;
-                printf((mpi_matrix_storage_get(m1, false, p, &v) ? "%12.4lg" : "            "), v);
+                printf((mpi_matrix_storage_get(m1, mpi_matrix_orient_normal, p, &v) ? "%12.4lg" : "            "), v);
             }
             printf("\n");
         }

@@ -3,9 +3,9 @@
 */
 
 /*!
-	@header 32-bit integer set
+	@header Integer set
 	
-	Representation and functionality for a set of 32-bit
+	Representation and functionality for a set of
 	integer values.  Members of the set are represented as
 	integer ranges, so the implementation is optimal for sets
 	that minimize gaps (which is exactly what we need for the
@@ -17,11 +17,12 @@
 
 #include "mpi_matrix_config.h"
 #include "int_range.h"
+#include "int_seq.h"
 
 /*
  * @typedef int_set_ref
  *
- * Opaque reference to a set of 32-bit integers.
+ * Opaque reference to a set of integers.
  */
 typedef struct int_set * int_set_ref;
 
@@ -66,6 +67,15 @@ bool int_set_push_int(int_set_ref S, base_int_t i);
 bool int_set_push_range(int_set_ref S, int_range_t r);
 
 /*
+ * @function int_set_push_seq
+ *
+ * Add all integers in sequence s to the set S.  Returns
+ * true if successful, false otherwise (e.g. memory allocation
+ * failure).
+ */
+bool int_set_push_seq(int_set_ref S, int_seq_t s);
+
+/*
  * @function int_set_remove_int
  *
  * Remove integer i from the set S.  Returns true if
@@ -80,6 +90,14 @@ bool int_set_remove_int(int_set_ref S, base_int_t i);
  * true if successful.
  */
 bool int_set_remove_range(int_set_ref S, int_range_t r);
+
+/*
+ * @function int_set_remove_seq
+ *
+ * Remove all integers in sequence s from the set S.  Returns
+ * true if successful.
+ */
+bool int_set_remove_seq(int_set_ref S, int_seq_t s);
 
 /*
  * @function int_set_peek_next_int

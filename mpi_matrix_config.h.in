@@ -20,6 +20,16 @@
 #include "mpi.h"
 
 /*
+ * Do we have C11 features?
+ */
+#if (defined __STDC_VERSION__ && __STDC_VERSION__ >= 201112L)
+#define HAVE_STD_C11
+#   if (__STDC_VERSION__ >= 201710L)
+#      define HAVE_STD_C23
+#   endif
+#endif
+
+/*
  * CMake will determine whether this macro is defined
  * or not based on the ENABLE_INT64 option (off/on).
  */

@@ -89,6 +89,20 @@ enum {
 typedef unsigned int mpi_matrix_coord_status_t;
 
 /*
+ * @typedef mpi_matrix_orient_t
+ *
+ * Orientation of matrix coordinate relative to the underlying
+ * matrix coordinate system.  Transpose implies (i,j) accesses
+ * element (j,i), conjugate transpose accesses the complex
+ * conjugate of (j,i).
+ */
+typedef enum {
+    mpi_matrix_orient_normal = 0,
+    mpi_matrix_orient_transpose = 't',
+    mpi_matrix_orient_conj_transpose = 'c'
+} mpi_matrix_orient_t;
+
+/*
  * @typedef mpi_matrix_coord_ptr
  *
  * An opaque pointer to a mpi_matrix_coord instance.
@@ -110,7 +124,7 @@ typedef base_int_t (*mpi_matrix_coord_element_count_callback)(mpi_matrix_coord_p
  *
  * Returns a coordinate status bitmask for p.
  */
-typedef mpi_matrix_coord_status_t (*mpi_matrix_coord_index_status_callback)(mpi_matrix_coord_ptr coord, bool is_transpose, int_pair_t p);
+typedef mpi_matrix_coord_status_t (*mpi_matrix_coord_index_status_callback)(mpi_matrix_coord_ptr coord, mpi_matrix_orient_t orient, int_pair_t p);
 
 /*
  * @typedef mpi_matrix_coord_index_reduce
@@ -118,7 +132,7 @@ typedef mpi_matrix_coord_status_t (*mpi_matrix_coord_index_status_callback)(mpi_
  * Possibly alter the coordinate p to account for underlying matrix
  * symmetry.
  */
-typedef bool (*mpi_matrix_coord_index_reduce_callback)(mpi_matrix_coord_ptr coord, bool is_transpose, int_pair_t *p);
+typedef bool (*mpi_matrix_coord_index_reduce_callback)(mpi_matrix_coord_ptr coord, mpi_matrix_orient_t orient, int_pair_t *p);
 
 /*
  * @typedef mpi_matrix_coord_index_to_offset_callback
@@ -127,12 +141,12 @@ typedef bool (*mpi_matrix_coord_index_reduce_callback)(mpi_matrix_coord_ptr coor
  * a flat offset at which that element would be stored.
  *
  * If the matrix is being accessed in transposed form, the
- * is_transpose flag effectively swaps p=(i,j) => (j,i) behind
+ * orient flag effectively swaps p=(i,j) => (j,i) behind
  * the scenes.
  *
  * Returns -1 if there is no matrix element associated with p.
  */
-typedef base_int_t (*mpi_matrix_coord_index_to_offset_callback)(mpi_matrix_coord_ptr coord, bool is_transpose, int_pair_t p);
+typedef base_int_t (*mpi_matrix_coord_index_to_offset_callback)(mpi_matrix_coord_ptr coord, mpi_matrix_orient_t orient, int_pair_t p);
 
 /*
  * @typedef mpi_matrix_coord_callbacks_t

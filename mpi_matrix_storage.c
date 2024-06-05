@@ -1,13 +1,22 @@
 
 #include "mpi_matrix_storage.h"
 
+/*
+ * For shared memory handling
+ */
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h> 
+
 enum {
-    mpi_matrix_storage_options_no_coord = 1 << 0
+    mpi_matrix_storage_options_no_coord = 1 << 0,
+    mpi_matrix_storage_options_is_immutable = 1 << 1,
+    mpi_matrix_storage_options_is_mmap = 1 << 2
 };
 
 //
 
-static size_t __mpi_matrix_storage_datatype_byte_sizes[] = {
+const size_t mpi_matrix_storage_datatype_byte_sizes[] = {
                     sizeof(float),
                     sizeof(double),
                     sizeof(float complex),
@@ -57,7 +66,7 @@ mpi_matrix_storage_datatype_get_name(
 
 typedef struct {
     mpi_matrix_storage_t    base;
-    float                   elements[0];
+    float                   *elements;
 } mpi_matrix_storage_basic_real_sp_t;
 
 size_t
@@ -71,7 +80,7 @@ __mpi_matrix_storage_basic_real_sp_byte_usage(
 bool
 __mpi_matrix_storage_basic_real_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -80,7 +89,7 @@ __mpi_matrix_storage_basic_real_sp_get(
     float                               *ELEMENT = (float*)element;
     base_int_t                          offset = mpi_matrix_coord_index_to_offset(
                                                         &storage->coord,
-                                                        is_transpose,
+                                                        orient,
                                                         p);
     *ELEMENT = ( offset >= 0 ) ? STORAGE->elements[offset] : 0.0f;
     return true;
@@ -89,20 +98,22 @@ __mpi_matrix_storage_basic_real_sp_get(
 bool
 __mpi_matrix_storage_basic_real_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
 {
-    mpi_matrix_storage_basic_real_sp_t  *STORAGE = (mpi_matrix_storage_basic_real_sp_t*)storage;
-    float                               *ELEMENT = (float*)element;
-    base_int_t                          offset = mpi_matrix_coord_index_to_offset(
-                                                        &storage->coord,
-                                                        is_transpose,
-                                                        p);
-    if ( offset >= 0 ) {
-        STORAGE->elements[offset] = *ELEMENT;
-        return true;
+    if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) ) {
+        mpi_matrix_storage_basic_real_sp_t  *STORAGE = (mpi_matrix_storage_basic_real_sp_t*)storage;
+        float                               *ELEMENT = (float*)element;
+        base_int_t                          offset = mpi_matrix_coord_index_to_offset(
+                                                            &storage->coord,
+                                                            orient,
+                                                            p);
+        if ( offset >= 0 ) {
+            STORAGE->elements[offset] = *ELEMENT;
+            return true;
+        }
     }
     return false;
 }
@@ -110,12 +121,12 @@ __mpi_matrix_storage_basic_real_sp_set(
 bool
 __mpi_matrix_storage_basic_real_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     float                   zero = 0.0f;
-    return __mpi_matrix_storage_basic_real_sp_set(storage, is_transpose, p, &zero);
+    return __mpi_matrix_storage_basic_real_sp_set(storage, orient, p, &zero);
 }
 
 mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_real_sp_callbacks = {
@@ -132,7 +143,7 @@ mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_real_sp_callbacks = {
 
 typedef struct {
     mpi_matrix_storage_t    base;
-    double                  elements[0];
+    double                  *elements;
 } mpi_matrix_storage_basic_real_dp_t;
 
 size_t
@@ -146,7 +157,7 @@ __mpi_matrix_storage_basic_real_dp_byte_usage(
 bool
 __mpi_matrix_storage_basic_real_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -155,7 +166,7 @@ __mpi_matrix_storage_basic_real_dp_get(
     double                              *ELEMENT = (double*)element;
     base_int_t                          offset = mpi_matrix_coord_index_to_offset(
                                                         &storage->coord,
-                                                        is_transpose,
+                                                        orient,
                                                         p);
     *ELEMENT = ( offset >= 0 ) ? STORAGE->elements[offset] : 0.0;
     return true;
@@ -164,20 +175,22 @@ __mpi_matrix_storage_basic_real_dp_get(
 bool
 __mpi_matrix_storage_basic_real_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
 {
-    mpi_matrix_storage_basic_real_dp_t  *STORAGE = (mpi_matrix_storage_basic_real_dp_t*)storage;
-    double                              *ELEMENT = (double*)element;
-    base_int_t                          offset = mpi_matrix_coord_index_to_offset(
-                                                        &storage->coord,
-                                                        is_transpose,
-                                                        p);
-    if ( offset >= 0 ) {
-        STORAGE->elements[offset] = *ELEMENT;
-        return true;
+    if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) ) {
+        mpi_matrix_storage_basic_real_dp_t  *STORAGE = (mpi_matrix_storage_basic_real_dp_t*)storage;
+        double                              *ELEMENT = (double*)element;
+        base_int_t                          offset = mpi_matrix_coord_index_to_offset(
+                                                            &storage->coord,
+                                                            orient,
+                                                            p);
+        if ( offset >= 0 ) {
+            STORAGE->elements[offset] = *ELEMENT;
+            return true;
+        }
     }
     return false;
 }
@@ -185,12 +198,12 @@ __mpi_matrix_storage_basic_real_dp_set(
 bool
 __mpi_matrix_storage_basic_real_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     double                  zero = 0.0;
-    return __mpi_matrix_storage_basic_real_dp_set(storage, is_transpose, p, &zero);
+    return __mpi_matrix_storage_basic_real_dp_set(storage, orient, p, &zero);
 }
 
 mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_real_dp_callbacks = {
@@ -207,7 +220,7 @@ mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_real_dp_callbacks = {
 
 typedef struct {
     mpi_matrix_storage_t    base;
-    float complex           elements[0];
+    float complex           *elements;
 } mpi_matrix_storage_basic_complex_sp_t;
 
 size_t
@@ -221,7 +234,7 @@ __mpi_matrix_storage_basic_complex_sp_byte_usage(
 bool
 __mpi_matrix_storage_basic_complex_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -230,29 +243,33 @@ __mpi_matrix_storage_basic_complex_sp_get(
     float complex                           *ELEMENT = (float complex*)element;
     base_int_t                              offset = mpi_matrix_coord_index_to_offset(
                                                             &storage->coord,
-                                                            is_transpose,
+                                                            orient,
                                                             p);
-    *ELEMENT = ( offset >= 0 ) ? STORAGE->elements[offset] : CMPLXF(0.0f, 0.0f);
+    *ELEMENT = ( offset >= 0 ) ? 
+                    ( (orient == mpi_matrix_orient_conj_transpose) ? conjf(STORAGE->elements[offset]) : STORAGE->elements[offset] ) :
+                    CMPLXF(0.0f, 0.0f);
     return true;
 }
 
 bool
 __mpi_matrix_storage_basic_complex_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
 {
-    mpi_matrix_storage_basic_complex_sp_t   *STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)storage;
-    float complex                           *ELEMENT = (float complex*)element;
-    base_int_t                              offset = mpi_matrix_coord_index_to_offset(
-                                                            &storage->coord,
-                                                            is_transpose,
-                                                            p);
-    if ( offset >= 0 ) {
-        STORAGE->elements[offset] = *ELEMENT;
-        return true;
+    if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) ) {
+        mpi_matrix_storage_basic_complex_sp_t   *STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)storage;
+        float complex                           *ELEMENT = (float complex*)element;
+        base_int_t                              offset = mpi_matrix_coord_index_to_offset(
+                                                                &storage->coord,
+                                                                orient,
+                                                                p);
+        if ( offset >= 0 ) {
+            STORAGE->elements[offset] = *ELEMENT;
+            return true;
+        }
     }
     return false;
 }
@@ -260,12 +277,12 @@ __mpi_matrix_storage_basic_complex_sp_set(
 bool
 __mpi_matrix_storage_basic_complex_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     float complex           zero = CMPLXF(0.0f, 0.0f);
-    return __mpi_matrix_storage_basic_complex_sp_set(storage, is_transpose, p, &zero);
+    return __mpi_matrix_storage_basic_complex_sp_set(storage, orient, p, &zero);
 }
 
 mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_complex_sp_callbacks = {
@@ -282,7 +299,7 @@ mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_complex_sp_callbacks =
 
 typedef struct {
     mpi_matrix_storage_t    base;
-    double complex          elements[0];
+    double complex          *elements;
 } mpi_matrix_storage_basic_complex_dp_t;
 
 size_t
@@ -296,7 +313,7 @@ __mpi_matrix_storage_basic_complex_dp_byte_usage(
 bool
 __mpi_matrix_storage_basic_complex_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -305,29 +322,33 @@ __mpi_matrix_storage_basic_complex_dp_get(
     double complex                          *ELEMENT = (double complex*)element;
     base_int_t                              offset = mpi_matrix_coord_index_to_offset(
                                                             &storage->coord,
-                                                            is_transpose,
+                                                            orient,
                                                             p);
-    *ELEMENT = ( offset >= 0 ) ? STORAGE->elements[offset] : CMPLX(0.0, 0.0);
+    *ELEMENT = ( offset >= 0 ) ? 
+                    ( (orient == mpi_matrix_orient_conj_transpose) ? conj(STORAGE->elements[offset]) : STORAGE->elements[offset] ) :
+                    CMPLX(0.0, 0.0);
     return true;
 }
 
 bool
 __mpi_matrix_storage_basic_complex_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
 {
-    mpi_matrix_storage_basic_complex_dp_t   *STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)storage;
-    double complex                          *ELEMENT = (double complex*)element;
-    base_int_t                              offset = mpi_matrix_coord_index_to_offset(
-                                                            &storage->coord,
-                                                            is_transpose,
-                                                            p);
-    if ( offset >= 0 ) {
-        STORAGE->elements[offset] = *ELEMENT;
-        return true;
+    if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) ) {
+        mpi_matrix_storage_basic_complex_dp_t   *STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)storage;
+        double complex                          *ELEMENT = (double complex*)element;
+        base_int_t                              offset = mpi_matrix_coord_index_to_offset(
+                                                                &storage->coord,
+                                                                orient,
+                                                                p);
+        if ( offset >= 0 ) {
+            STORAGE->elements[offset] = *ELEMENT;
+            return true;
+        }
     }
     return false;
 }
@@ -335,12 +356,12 @@ __mpi_matrix_storage_basic_complex_dp_set(
 bool
 __mpi_matrix_storage_basic_complex_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     double complex          zero = CMPLX(0.0, 0.0);
-    return __mpi_matrix_storage_basic_complex_dp_set(storage, is_transpose, p, &zero);
+    return __mpi_matrix_storage_basic_complex_dp_set(storage, orient, p, &zero);
 }
 
 mpi_matrix_storage_callbacks_t __mpi_matrix_storage_basic_complex_dp_callbacks = {
@@ -376,9 +397,9 @@ __mpi_matrix_storage_basic_create(
     mpi_matrix_coord_ptr            coord
 )
 {
-    size_t                  alloc_size = __mpi_matrix_storage_basic_base_byte_sizes[datatype] + 
-                                         __mpi_matrix_storage_datatype_byte_sizes[datatype] * mpi_matrix_coord_element_count(coord);
-    mpi_matrix_storage_t   *new_storage = (mpi_matrix_storage_t*)malloc(alloc_size);
+    size_t                  alloc_size = __mpi_matrix_storage_basic_base_byte_sizes[datatype]; 
+    size_t                  data_size = mpi_matrix_storage_datatype_byte_sizes[datatype] * mpi_matrix_coord_element_count(coord);
+    mpi_matrix_storage_t   *new_storage = (mpi_matrix_storage_t*)malloc(alloc_size + data_size);
     
     if ( new_storage ) {
         memset(new_storage, 0, alloc_size);
@@ -386,6 +407,55 @@ __mpi_matrix_storage_basic_create(
         new_storage->datatype = datatype;
         new_storage->coord = *coord;
         new_storage->callbacks = *__mpi_matrix_storage_basic_callbacks_by_datatype[datatype];
+        switch ( datatype ) {
+            case mpi_matrix_storage_datatype_real_sp: {
+                mpi_matrix_storage_basic_real_sp_t* STORAGE = (mpi_matrix_storage_basic_real_sp_t*)new_storage;
+                STORAGE->elements = (void*)new_storage + data_size;
+                break;
+            }
+            case mpi_matrix_storage_datatype_real_dp: {
+                mpi_matrix_storage_basic_real_dp_t* STORAGE = (mpi_matrix_storage_basic_real_dp_t*)new_storage;
+                STORAGE->elements = (void*)new_storage + data_size;
+                break;
+            }
+            case mpi_matrix_storage_datatype_complex_sp: {
+                mpi_matrix_storage_basic_complex_sp_t* STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)new_storage;
+                STORAGE->elements = (void*)new_storage + data_size;
+                break;
+            }
+            case mpi_matrix_storage_datatype_complex_dp: {
+                mpi_matrix_storage_basic_complex_dp_t* STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)new_storage;
+                STORAGE->elements = (void*)new_storage + data_size;
+                break;
+            }
+            case mpi_matrix_storage_datatype_max:
+        }
+    }
+    return new_storage;
+}
+
+mpi_matrix_storage_ptr
+__mpi_matrix_storage_basic_create_immutable(
+    mpi_matrix_storage_datatype_t   datatype,
+    mpi_matrix_coord_ptr            coord,
+    bool                            should_alloc_array
+)
+{
+    mpi_matrix_storage_t   *new_storage = NULL;
+    
+    if ( should_alloc_array ) {
+        new_storage = (mpi_matrix_storage_t*)__mpi_matrix_storage_basic_create(datatype, coord);
+        new_storage->options = mpi_matrix_storage_options_is_immutable;
+    } else {
+        new_storage = (mpi_matrix_storage_t*)malloc(__mpi_matrix_storage_basic_base_byte_sizes[datatype]);
+        if ( new_storage ) {
+            memset(new_storage, 0, __mpi_matrix_storage_basic_base_byte_sizes[datatype]);
+            new_storage->type = mpi_matrix_storage_type_basic;
+            new_storage->datatype = datatype;
+            new_storage->options = mpi_matrix_storage_options_is_immutable;
+            new_storage->coord = *coord;
+            new_storage->callbacks = *__mpi_matrix_storage_basic_callbacks_by_datatype[datatype];
+        }
     }
     return new_storage;
 }
@@ -423,7 +493,7 @@ __mpi_matrix_storage_sparse_bst_minor_tuple_pool_byte_size(
     mpi_matrix_storage_datatype_t   datatype
 )
 {
-    size_t              element_size = __mpi_matrix_storage_datatype_byte_sizes[datatype];
+    size_t              element_size = mpi_matrix_storage_datatype_byte_sizes[datatype];
     base_int_t          tuple_count = (MPI_MATRIX_STORAGE_SPARSE_PAGE_SIZE - sizeof(mpi_matrix_storage_sparse_bst_minor_tuple_pool_t)) /
                                             (sizeof(mpi_matrix_storage_sparse_bst_minor_tuple_t) + element_size);
     
@@ -439,7 +509,7 @@ __mpi_matrix_storage_sparse_bst_minor_tuple_pool_create(
 {
     size_t                                              alloc_bytes = sizeof(mpi_matrix_storage_sparse_bst_minor_tuple_pool_t);
     size_t                                              tuple_bytes;
-    size_t                                              element_size = __mpi_matrix_storage_datatype_byte_sizes[datatype];
+    size_t                                              element_size = mpi_matrix_storage_datatype_byte_sizes[datatype];
     base_int_t                                          tuple_count;
     mpi_matrix_storage_sparse_bst_minor_tuple_pool_t    *new_pool = NULL;
     
@@ -730,7 +800,7 @@ __mpi_matrix_storage_sparse_bst_byte_usage(
 bool
 __mpi_matrix_storage_sparse_bst_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -738,7 +808,7 @@ __mpi_matrix_storage_sparse_bst_clear(
     mpi_matrix_storage_sparse_bst_major_tuple_t *major = STORAGE->elements;
     base_int_t                                  idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     // Search for the major index first:
     idx = (storage->coord.is_row_major) ? p.i : p.j;
@@ -822,7 +892,7 @@ __mpi_matrix_storage_sparse_bst_clear(
 bool
 __mpi_matrix_storage_sparse_bst_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -831,7 +901,7 @@ __mpi_matrix_storage_sparse_bst_get(
     mpi_matrix_storage_sparse_bst_major_tuple_t *major = STORAGE->elements;
     base_int_t                                  idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     // Search for the major index first:
     idx = (storage->coord.is_row_major) ? p.i : p.j;
@@ -842,10 +912,24 @@ __mpi_matrix_storage_sparse_bst_get(
             idx = (storage->coord.is_row_major) ? p.j : p.i;
             while ( minor ) {
                 if ( minor->j == idx ) {
+                    if ( orient == mpi_matrix_orient_conj_transpose ) {
+                        if ( storage->datatype == mpi_matrix_storage_datatype_complex_sp ) {
+                            float complex   *ELEMENT = (float complex*)element,
+                                            *ORIGINAL = (float complex*)mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(minor);
+                            *ELEMENT = conjf(*ORIGINAL);
+                            return true;
+                        }
+                        else if ( storage->datatype == mpi_matrix_storage_datatype_complex_dp ) {
+                            double complex  *ELEMENT = (double complex*)element,
+                                            *ORIGINAL = (double complex*)mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(minor);
+                            *ELEMENT = conj(*ORIGINAL);
+                            return true;
+                        }
+                    }
                     memcpy(
                         element,
                         mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(minor),
-                        __mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
+                        mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
                     return true;
                 }
                 if ( minor->j > idx ) minor = minor->left;
@@ -862,7 +946,7 @@ __mpi_matrix_storage_sparse_bst_get(
 bool
 __mpi_matrix_storage_sparse_bst_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -871,7 +955,7 @@ __mpi_matrix_storage_sparse_bst_set(
     mpi_matrix_storage_sparse_bst_major_tuple_t *major = STORAGE->elements;
     base_int_t                                  idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     // Search for the major index first:
     idx = (storage->coord.is_row_major) ? p.i : p.j;
@@ -932,7 +1016,7 @@ __mpi_matrix_storage_sparse_bst_set(
                     memcpy(
                         mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(minor),
                         element,
-                        __mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
+                        mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
                     return true;
                 }
                 // If the index lies to the left, check that tuple; if it is less than idx, 
@@ -955,7 +1039,7 @@ __mpi_matrix_storage_sparse_bst_set(
                         memcpy(
                             mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(new_minor),
                             element,
-                            __mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
+                            mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
                         minor->left = new_minor;
                         return true;
                     }
@@ -980,7 +1064,7 @@ __mpi_matrix_storage_sparse_bst_set(
                         memcpy(
                             mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(new_minor),
                             element,
-                            __mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
+                            mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
                         minor->right = new_minor;
                         return true;
                     }
@@ -1000,7 +1084,7 @@ __mpi_matrix_storage_sparse_bst_set(
             memcpy(
                 mpi_matrix_storage_sparse_bst_minor_tuple_element_ptr(new_minor),
                 element,
-                __mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
+                mpi_matrix_storage_datatype_byte_sizes[storage->datatype]);
             major->row_siblings = new_minor;
             return true;
         }
@@ -1042,7 +1126,7 @@ __mpi_matrix_storage_sparse_bst_create(
             mpi_matrix_storage_destroy((mpi_matrix_storage_ptr)new_storage);
             // Memory error:
             fprintf(stderr, "%s:%d - unable to allocate a sparse major tuple\n", __FILE__, __LINE__);
-            return false;
+            return NULL;
         }
         new_storage->elements->left = new_storage->elements->right = NULL;
         new_storage->elements->row_siblings = NULL;
@@ -1140,14 +1224,14 @@ __mpi_matrix_storage_sparse_compressed_real_sp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_compressed_real_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_storage_sparse_compressed_real_sp_t *STORAGE = (mpi_matrix_storage_sparse_compressed_real_sp_t*)storage;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1191,7 +1275,7 @@ __mpi_matrix_storage_sparse_compressed_real_sp_clear(
 bool
 __mpi_matrix_storage_sparse_compressed_real_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1200,7 +1284,7 @@ __mpi_matrix_storage_sparse_compressed_real_sp_get(
     float                                           *ELEMENT = (float*)element;
     base_int_t                                      offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1234,7 +1318,7 @@ __mpi_matrix_storage_sparse_compressed_real_sp_get(
 bool
 __mpi_matrix_storage_sparse_compressed_real_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1244,7 +1328,7 @@ __mpi_matrix_storage_sparse_compressed_real_sp_set(
     base_int_t                                      offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     base_int_t                                      insert_at = 0, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     primary_idx_max = storage->coord.is_row_major ? storage->coord.dimensions.i : storage->coord.dimensions.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -1406,14 +1490,14 @@ __mpi_matrix_storage_sparse_compressed_real_dp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_compressed_real_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_storage_sparse_compressed_real_dp_t *STORAGE = (mpi_matrix_storage_sparse_compressed_real_dp_t*)storage;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1459,7 +1543,7 @@ __mpi_matrix_storage_sparse_compressed_real_dp_clear(
 bool
 __mpi_matrix_storage_sparse_compressed_real_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1468,7 +1552,7 @@ __mpi_matrix_storage_sparse_compressed_real_dp_get(
     double                                          *ELEMENT = (double*)element;
     base_int_t                                      offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1502,7 +1586,7 @@ __mpi_matrix_storage_sparse_compressed_real_dp_get(
 bool
 __mpi_matrix_storage_sparse_compressed_real_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1512,7 +1596,7 @@ __mpi_matrix_storage_sparse_compressed_real_dp_set(
     base_int_t                                      offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     base_int_t                                      insert_at = 0, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     primary_idx_max = storage->coord.is_row_major ? storage->coord.dimensions.i : storage->coord.dimensions.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -1674,14 +1758,14 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_storage_sparse_compressed_complex_sp_t *STORAGE = (mpi_matrix_storage_sparse_compressed_complex_sp_t*)storage;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1725,7 +1809,7 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_clear(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1734,7 +1818,7 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_get(
     float complex                                       *ELEMENT = (float complex*)element;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1750,7 +1834,7 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_get(
             while ( offset_lo <= offset_hi ) {
                 if ( STORAGE->secondary_indices[offset] == secondary_idx ) {
                     // Found it!
-                    *ELEMENT = STORAGE->values[offset];
+                    *ELEMENT = (orient == mpi_matrix_orient_conj_transpose) ? conjf(STORAGE->values[offset]) : STORAGE->values[offset];
                     return true;
                 }
                 if ( STORAGE->secondary_indices[offset] > secondary_idx ) {
@@ -1768,7 +1852,7 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_get(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -1778,7 +1862,7 @@ __mpi_matrix_storage_sparse_compressed_complex_sp_set(
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     base_int_t                                          insert_at = 0, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     primary_idx_max = storage->coord.is_row_major ? storage->coord.dimensions.i : storage->coord.dimensions.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -1940,14 +2024,14 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
     mpi_matrix_storage_sparse_compressed_complex_dp_t *STORAGE = (mpi_matrix_storage_sparse_compressed_complex_dp_t*)storage;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -1991,7 +2075,7 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_clear(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2000,7 +2084,7 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_get(
     double complex                                      *ELEMENT = (double complex*)element;
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     if ( STORAGE->nvalues > 0 ) {
         primary_idx = storage->coord.is_row_major ? p.i : p.j;
@@ -2016,7 +2100,7 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_get(
             while ( offset_lo <= offset_hi ) {
                 if ( STORAGE->secondary_indices[offset] == secondary_idx ) {
                     // Found it!
-                    *ELEMENT = STORAGE->values[offset];
+                    *ELEMENT = (orient == mpi_matrix_orient_conj_transpose) ? conj(STORAGE->values[offset]) : STORAGE->values[offset];
                     return true;
                 }
                 if ( STORAGE->secondary_indices[offset] > secondary_idx ) {
@@ -2034,7 +2118,7 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_get(
 bool
 __mpi_matrix_storage_sparse_compressed_complex_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2044,7 +2128,7 @@ __mpi_matrix_storage_sparse_compressed_complex_dp_set(
     base_int_t                                          offset_lo, offset_hi, offset, primary_idx, secondary_idx;
     base_int_t                                          insert_at = 0, primary_idx_max;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     primary_idx_max = storage->coord.is_row_major ? storage->coord.dimensions.i : storage->coord.dimensions.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2171,7 +2255,7 @@ __mpi_matrix_storage_sparse_compressed_create(
     // Factor-in the storage for the primary indices:
     base_int_t              primary_idx_max = coord->is_row_major ? coord->dimensions.i : coord->dimensions.j;
     
-    alloc_size += (primary_idx_max + 1) * __mpi_matrix_storage_datatype_byte_sizes[datatype];
+    alloc_size += (primary_idx_max + 1) * mpi_matrix_storage_datatype_byte_sizes[datatype];
     
     new_storage = (mpi_matrix_storage_t*)malloc(alloc_size);
     if ( new_storage ) {
@@ -2352,7 +2436,12 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_destroy(
 {
     mpi_matrix_storage_sparse_coordinate_real_sp_t *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_sp_t*)storage;
     
-    if ( STORAGE->capacity > 0 ) free((void*)STORAGE->values);
+    if ( (storage->options & mpi_matrix_storage_options_is_mmap) && (STORAGE->capacity > 0) ) {
+        munmap(STORAGE->values, STORAGE->nvalues * (sizeof(float) + 2 * sizeof(base_int_t)));
+    }
+    else if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) && (STORAGE->capacity > 0) ) {
+        free((void*)STORAGE->values);
+    }
 }
 
 size_t
@@ -2368,7 +2457,7 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -2376,7 +2465,8 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_clear(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2398,7 +2488,7 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_clear(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2408,7 +2498,7 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_get(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2424,7 +2514,7 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_get(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2434,7 +2524,8 @@ __mpi_matrix_storage_sparse_coordinate_real_sp_set(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2628,7 +2719,12 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_destroy(
 {
     mpi_matrix_storage_sparse_coordinate_real_dp_t *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_dp_t*)storage;
     
-    if ( STORAGE->capacity > 0 ) free((void*)STORAGE->values);
+    if ( (storage->options & mpi_matrix_storage_options_is_mmap) && (STORAGE->capacity > 0) ) {
+        munmap(STORAGE->values, STORAGE->nvalues * (sizeof(double) + 2 * sizeof(base_int_t)));
+    }
+    else if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) && (STORAGE->capacity > 0) ) {
+        free((void*)STORAGE->values);
+    }
 }
 
 size_t
@@ -2644,7 +2740,7 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -2652,7 +2748,8 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_clear(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2674,7 +2771,7 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_clear(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2684,7 +2781,7 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_get(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2700,7 +2797,7 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_get(
 bool
 __mpi_matrix_storage_sparse_coordinate_real_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2710,7 +2807,8 @@ __mpi_matrix_storage_sparse_coordinate_real_dp_set(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2904,7 +3002,12 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_destroy(
 {
     mpi_matrix_storage_sparse_coordinate_complex_sp_t *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_sp_t*)storage;
     
-    if ( STORAGE->capacity > 0 ) free((void*)STORAGE->values);
+    if ( (storage->options & mpi_matrix_storage_options_is_mmap) && (STORAGE->capacity > 0) ) {
+        munmap(STORAGE->values, STORAGE->nvalues * (sizeof(complex float) + 2 * sizeof(base_int_t)));
+    }
+    else if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) && (STORAGE->capacity > 0) ) {
+        free((void*)STORAGE->values);
+    }
 }
 
 size_t
@@ -2920,7 +3023,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_sp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -2928,7 +3031,8 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_clear(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -2950,7 +3054,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_clear(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_sp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2960,14 +3064,14 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_get(
     base_int_t                                          primary_idx, secondary_idx, offset;
     bool                                                extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
     
     extant_index = __mpi_matrix_storage_sparse_coordinate_complex_sp_find_index(STORAGE, primary_idx, secondary_idx, &offset);
     if ( extant_index ) {
-        *ELEMENT = STORAGE->values[offset];
+        *ELEMENT = (orient == mpi_matrix_orient_conj_transpose) ? conjf(STORAGE->values[offset]) : STORAGE->values[offset];
         return true;
     }
     return false;
@@ -2976,7 +3080,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_get(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_sp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -2986,7 +3090,8 @@ __mpi_matrix_storage_sparse_coordinate_complex_sp_set(
     base_int_t                                          primary_idx, secondary_idx, offset;
     bool                                                extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -3180,7 +3285,12 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_destroy(
 {
     mpi_matrix_storage_sparse_coordinate_complex_dp_t *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_dp_t*)storage;
     
-    if ( STORAGE->capacity > 0 ) free((void*)STORAGE->values);
+    if ( (storage->options & mpi_matrix_storage_options_is_mmap) && (STORAGE->capacity > 0) ) {
+        munmap(STORAGE->values, STORAGE->nvalues * (sizeof(complex double) + 2 * sizeof(base_int_t)));
+    }
+    else if ( ! (storage->options & mpi_matrix_storage_options_is_immutable) && (STORAGE->capacity > 0) ) {
+        free((void*)STORAGE->values);
+    }
 }
 
 size_t
@@ -3196,7 +3306,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_byte_usage(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_dp_clear(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p
 )
 {
@@ -3204,7 +3314,8 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_clear(
     base_int_t                                      primary_idx, secondary_idx, offset;
     bool                                            extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -3226,7 +3337,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_clear(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_dp_get(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -3236,14 +3347,14 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_get(
     base_int_t                                          primary_idx, secondary_idx, offset;
     bool                                                extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
     
     extant_index = __mpi_matrix_storage_sparse_coordinate_complex_dp_find_index(STORAGE, primary_idx, secondary_idx, &offset);
     if ( extant_index ) {
-        *ELEMENT = STORAGE->values[offset];
+        *ELEMENT = (orient == mpi_matrix_orient_conj_transpose) ? conj(STORAGE->values[offset]) : STORAGE->values[offset];
         return true;
     }
     return false;
@@ -3252,7 +3363,7 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_get(
 bool
 __mpi_matrix_storage_sparse_coordinate_complex_dp_set(
     mpi_matrix_storage_ptr  storage,
-    bool                    is_transpose,
+    mpi_matrix_orient_t     orient,
     int_pair_t              p,
     void                    *element
 )
@@ -3262,7 +3373,8 @@ __mpi_matrix_storage_sparse_coordinate_complex_dp_set(
     base_int_t                                          primary_idx, secondary_idx, offset;
     bool                                                extant_index;
     
-    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, is_transpose, &p) ) return false;
+    if ( storage->options & mpi_matrix_storage_options_is_immutable ) return false;
+    if ( ! mpi_matrix_coord_index_reduce(&storage->coord, orient, &p) ) return false;
     
     primary_idx = storage->coord.is_row_major ? p.i : p.j;
     secondary_idx = storage->coord.is_row_major ? p.j : p.i;
@@ -3333,6 +3445,96 @@ __mpi_matrix_storage_sparse_coordinate_create(
         new_storage->datatype = datatype;
         new_storage->coord = *coord;
         new_storage->callbacks = *__mpi_matrix_storage_sparse_coordinate_callbacks_by_datatype[datatype];
+    }
+    return new_storage;
+}
+
+mpi_matrix_storage_ptr
+__mpi_matrix_storage_sparse_coordinate_create_immutable(
+    mpi_matrix_storage_datatype_t   datatype,
+    mpi_matrix_coord_ptr            coord,
+    base_int_t                      nvalues,
+    bool                            should_alloc_arrays
+)
+{
+    size_t                  addl_bytes = nvalues * (mpi_matrix_storage_datatype_byte_sizes[datatype] + 2 * sizeof(base_int_t));
+    size_t                  alloc_size = __mpi_matrix_storage_sparse_coordinate_base_byte_sizes[datatype];
+    mpi_matrix_storage_t   *new_storage = (mpi_matrix_storage_t*)malloc(alloc_size + ((should_alloc_arrays) ? addl_bytes : 0));
+    
+    if ( new_storage ) {
+        void                *base_ptr = (void*)new_storage + alloc_size;
+        
+        memset(new_storage, 0, alloc_size);
+        new_storage->type = mpi_matrix_storage_type_sparse_coordinate;
+        new_storage->datatype = datatype;
+        new_storage->coord = *coord;
+        new_storage->options = mpi_matrix_storage_options_is_immutable;
+        new_storage->callbacks = *__mpi_matrix_storage_sparse_coordinate_callbacks_by_datatype[datatype];
+        
+        switch ( datatype ) {
+            case mpi_matrix_storage_datatype_real_sp: {
+                mpi_matrix_storage_sparse_coordinate_real_sp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_sp_t*)new_storage;
+                
+                STORAGE->nvalues = nvalues;
+                STORAGE->capacity = nvalues;
+                if ( should_alloc_arrays ) {
+                    STORAGE->values = base_ptr; base_ptr += sizeof(float) * nvalues;
+                    STORAGE->primary_indices = base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                    STORAGE->secondary_indices = base_ptr;
+                } else {
+                    STORAGE->values = NULL;
+                    STORAGE->primary_indices = STORAGE->secondary_indices = NULL;
+                }
+                break;
+            }
+            case mpi_matrix_storage_datatype_real_dp: {
+                mpi_matrix_storage_sparse_coordinate_real_dp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_dp_t*)new_storage;
+                
+                STORAGE->nvalues = nvalues;
+                STORAGE->capacity = nvalues;
+                if ( should_alloc_arrays ) {
+                    STORAGE->values = base_ptr; base_ptr += sizeof(double) * nvalues;
+                    STORAGE->primary_indices = base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                    STORAGE->secondary_indices = base_ptr;
+                } else {
+                    STORAGE->values = NULL;
+                    STORAGE->primary_indices = STORAGE->secondary_indices = NULL;
+                }
+                break;
+            }
+            case mpi_matrix_storage_datatype_complex_sp: {
+                mpi_matrix_storage_sparse_coordinate_complex_sp_t   *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_sp_t*)new_storage;
+                
+                STORAGE->nvalues = nvalues;
+                STORAGE->capacity = nvalues;
+                if ( should_alloc_arrays ) {
+                    STORAGE->values = base_ptr; base_ptr += sizeof(complex float) * nvalues;
+                    STORAGE->primary_indices = base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                    STORAGE->secondary_indices = base_ptr;
+                } else {
+                    STORAGE->values = NULL;
+                    STORAGE->primary_indices = STORAGE->secondary_indices = NULL;
+                }
+                break;
+            }
+            case mpi_matrix_storage_datatype_complex_dp: {
+                mpi_matrix_storage_sparse_coordinate_complex_dp_t   *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_dp_t*)new_storage;
+                
+                STORAGE->nvalues = nvalues;
+                STORAGE->capacity = nvalues;
+                if ( should_alloc_arrays ) {
+                    STORAGE->values = base_ptr; base_ptr += sizeof(complex double) * nvalues;
+                    STORAGE->primary_indices = base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                    STORAGE->secondary_indices = base_ptr;
+                } else {
+                    STORAGE->values = NULL;
+                    STORAGE->primary_indices = STORAGE->secondary_indices = NULL;
+                }
+                break;
+            }
+            case mpi_matrix_storage_datatype_max:
+                break;
+        }
     }
     return new_storage;
 }
@@ -3484,4 +3686,491 @@ mpi_matrix_storage_sparse_compressed_get_fields(
         return true;
     }
     return false;
+}
+
+//
+
+static uint64_t mpi_matrix_storage_sparse_coord_magic_header = 0x215852544d49504d;;
+static uint32_t mpi_matrix_storage_sparse_coord_native_version = 0x00010000;
+
+bool
+__mpi_matrix_storage_write_header_to_fd(
+    mpi_matrix_storage_ptr  storage,
+    int                     fd,
+    bool                    should_page_align,
+    base_int_t              nvalues
+)
+{
+#define DO_WRITE(P, S)      bytes_written = write(fd, (P), (S)); \
+                            if ( bytes_written < (S) ) return false; else total_bytes_written += (S);
+
+    uint8_t                 i8;
+    uint32_t                i32;
+    size_t                  total_bytes_written = 0;
+    ssize_t                 bytes_written;
+    
+    DO_WRITE(&mpi_matrix_storage_sparse_coord_magic_header, sizeof(mpi_matrix_storage_sparse_coord_magic_header))
+    DO_WRITE(&mpi_matrix_storage_sparse_coord_native_version, sizeof(mpi_matrix_storage_sparse_coord_native_version))
+
+    i8 = (uint8_t)storage->type;
+    DO_WRITE(&i8, sizeof(i8))
+
+    i8 = (uint8_t)sizeof(base_int_t);
+    DO_WRITE(&i8, sizeof(i8))
+
+    i8 = (uint8_t)storage->datatype;
+    DO_WRITE(&i8, sizeof(i8))
+
+    i8 = (uint8_t)storage->coord.type;
+    DO_WRITE(&i8, sizeof(i8))
+
+    i8 = (uint8_t)storage->coord.is_row_major;
+    DO_WRITE(&i8, sizeof(i8))
+
+    i32 = should_page_align ? getpagesize() : 0;
+    DO_WRITE(&i32, sizeof(i32))
+
+    DO_WRITE(&storage->coord.dimensions.i, sizeof(storage->coord.dimensions.i))
+    DO_WRITE(&storage->coord.dimensions.j, sizeof(storage->coord.dimensions.j))
+    DO_WRITE(&storage->coord.k1, sizeof(storage->coord.k1))
+    DO_WRITE(&storage->coord.k2, sizeof(storage->coord.k2))
+    
+    DO_WRITE(&nvalues, sizeof(nvalues))
+    if ( should_page_align && ((getpagesize() - total_bytes_written) != 0) ) lseek(fd, (getpagesize() - total_bytes_written), SEEK_CUR);
+    
+    return true;
+
+#undef DO_WRITE
+}
+
+bool
+mpi_matrix_storage_write_to_fd(
+    mpi_matrix_storage_ptr  storage,
+    int                     fd,
+    bool                    should_page_align
+)
+{
+#define DO_WRITE(P, S)      bytes_written = write(fd, (P), (S)); \
+                            if ( bytes_written < (S) ) return false; else total_bytes_written += (S);
+                            
+    size_t                  total_bytes_written = 0;
+    ssize_t                 bytes_written;
+    
+    switch ( storage->type ) {
+        case mpi_matrix_storage_type_basic: {
+            base_int_t      nvalues = mpi_matrix_coord_element_count(&storage->coord);
+            
+            if ( __mpi_matrix_storage_write_header_to_fd(storage, fd, should_page_align, nvalues) ) {
+                switch ( storage->datatype ) {
+                    case mpi_matrix_storage_datatype_real_sp: {
+                        mpi_matrix_storage_basic_real_sp_t* STORAGE = (mpi_matrix_storage_basic_real_sp_t*)storage;
+                        DO_WRITE(STORAGE->elements, sizeof(float) * nvalues)
+                        break;
+                    }
+                    case mpi_matrix_storage_datatype_real_dp: {
+                        mpi_matrix_storage_basic_real_dp_t* STORAGE = (mpi_matrix_storage_basic_real_dp_t*)storage;
+                        DO_WRITE(STORAGE->elements, sizeof(double) * nvalues)
+                        break;
+                    }
+                    case mpi_matrix_storage_datatype_complex_sp: {
+                        mpi_matrix_storage_basic_complex_sp_t* STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)storage;
+                        DO_WRITE(STORAGE->elements, sizeof(complex float) * nvalues)
+                        break;
+                    }
+                    case mpi_matrix_storage_datatype_complex_dp: {
+                        mpi_matrix_storage_basic_complex_dp_t* STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)storage;
+                        DO_WRITE(STORAGE->elements, sizeof(complex double) * nvalues)
+                        break;
+                    }
+                    case mpi_matrix_storage_datatype_max:
+                        break;
+                }
+                return true;
+            }
+            break;
+        }
+        case mpi_matrix_storage_type_sparse_coordinate: {
+            switch ( storage->datatype ) {
+                case mpi_matrix_storage_datatype_real_sp: {
+                    mpi_matrix_storage_sparse_coordinate_real_sp_t  *STORAGE = \
+                            (mpi_matrix_storage_sparse_coordinate_real_sp_t*)storage;
+                    
+                    if ( __mpi_matrix_storage_write_header_to_fd(storage, fd, should_page_align, STORAGE->nvalues) ) {
+                        DO_WRITE(STORAGE->values, STORAGE->nvalues * sizeof(float))
+                        DO_WRITE(STORAGE->primary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                        DO_WRITE(STORAGE->secondary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                    }
+                    break;
+                }
+                case mpi_matrix_storage_datatype_real_dp: {
+                    mpi_matrix_storage_sparse_coordinate_real_dp_t  *STORAGE = \
+                            (mpi_matrix_storage_sparse_coordinate_real_dp_t*)storage;
+                    
+                    if ( __mpi_matrix_storage_write_header_to_fd(storage, fd, should_page_align, STORAGE->nvalues) ) {
+                        DO_WRITE(STORAGE->values, STORAGE->nvalues * sizeof(double))
+                        DO_WRITE(STORAGE->primary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                        DO_WRITE(STORAGE->secondary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                    }
+                    break;
+                }
+                case mpi_matrix_storage_datatype_complex_sp: {
+                    mpi_matrix_storage_sparse_coordinate_complex_sp_t  *STORAGE = \
+                            (mpi_matrix_storage_sparse_coordinate_complex_sp_t*)storage;
+                    
+                    if ( __mpi_matrix_storage_write_header_to_fd(storage, fd, should_page_align, STORAGE->nvalues) ) {
+                        DO_WRITE(STORAGE->values, STORAGE->nvalues * sizeof(complex float))
+                        DO_WRITE(STORAGE->primary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                        DO_WRITE(STORAGE->secondary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                    }
+                    break;
+                }
+                case mpi_matrix_storage_datatype_complex_dp: {
+                    mpi_matrix_storage_sparse_coordinate_complex_dp_t  *STORAGE = \
+                            (mpi_matrix_storage_sparse_coordinate_complex_dp_t*)storage;
+                    
+                    if ( __mpi_matrix_storage_write_header_to_fd(storage, fd, should_page_align, STORAGE->nvalues) ) {
+                        DO_WRITE(STORAGE->values, STORAGE->nvalues * sizeof(complex double))
+                        DO_WRITE(STORAGE->primary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                        DO_WRITE(STORAGE->secondary_indices, STORAGE->nvalues * sizeof(base_int_t))
+                    }
+                    break;
+                }
+                case mpi_matrix_storage_datatype_max:
+                    break;
+            }
+            return true;
+        }
+        
+        default:
+            break;
+    }
+    return false;
+
+#undef DO_WRITE
+}
+
+//
+
+bool
+__mpi_matrix_storage_read_header_from_fd(
+    int                             fd,
+    mpi_matrix_storage_type_t       *type,
+    mpi_matrix_storage_datatype_t   *datatype,
+    mpi_matrix_coord_t              *coord,
+    base_int_t                      *nvalues,
+    size_t                          *nbytes_read,
+    const char*                     *error_msg
+)
+{
+#define DO_READ(P, S)               bytes_read = read(fd, (P), (S)); \
+                                    if ( bytes_read < (S) ) { \
+                                        if ( error_msg ) *error_msg = "error while reading " #P; \
+                                        return false; \
+                                    } else total_bytes_read += bytes_read;
+                            
+    ssize_t                         bytes_read;
+    size_t                          total_bytes_read = 0, page_size = 0;
+    uint64_t                        i64;
+    uint32_t                        i32;
+    uint8_t                         i8;
+    
+    mpi_matrix_coord_type_t         coord_type;
+    bool                            is_row_major;
+    int_pair_t                      dimensions;
+    base_int_t                      k1, k2;
+    
+    /*
+     * Read and validate the file header:
+     */
+    DO_READ(&i64, sizeof(i64))
+    if ( i64 != mpi_matrix_storage_sparse_coord_magic_header ) {
+        if ( error_msg ) *error_msg = "invalid magic header";
+        return false;
+    }
+
+    DO_READ(&i32, sizeof(i32))
+    if ( i32 > mpi_matrix_storage_sparse_coord_native_version ) {
+        if ( error_msg ) *error_msg = "file version newer than library version";
+        return false;
+    }
+
+    DO_READ(&i8, sizeof(i8))
+    if ( i8 >= mpi_matrix_storage_type_max ) {
+        if ( error_msg ) *error_msg = "invalid matrix type from file";
+        return false;
+    }
+    *type = i8;
+
+    DO_READ(&i8, sizeof(i8))
+    if ( i8 != sizeof(base_int_t) ) {
+        if ( error_msg ) *error_msg = "integer size mismatch";
+        return false;
+    }
+    
+    DO_READ(&i8, sizeof(i8))
+    if ( i8 >= mpi_matrix_storage_datatype_max ) {
+        if ( error_msg ) *error_msg = "invalid datatype in file";
+        return NULL;
+    }
+    *datatype = i8;
+    
+    DO_READ(&i8, sizeof(i8))
+    if ( i8 >= mpi_matrix_coord_type_max ) {
+        if ( error_msg ) *error_msg = "invalid coordinate type in file";
+        return NULL;
+    }
+    coord_type = i8;
+    
+    DO_READ(&i8, sizeof(i8))
+    if ( (i8 & ~(0x01)) ) {
+        if ( error_msg ) *error_msg = "invalid row major bool in file";
+        return NULL;
+    }
+    is_row_major = (i8 != 0);
+
+    DO_READ(&i32, sizeof(i32))
+    if ( i32 > 0 ) {
+        if ( i32 != getpagesize() ) {
+            if ( error_msg ) *error_msg = "page size mismatch between file and OS";
+            return NULL;
+        }
+    }
+    page_size = i32;
+    
+    DO_READ(&dimensions.i, sizeof(dimensions.i))
+    DO_READ(&dimensions.j, sizeof(dimensions.j))
+    DO_READ(&k1, sizeof(k1))
+    DO_READ(&k2, sizeof(k2))
+        
+    switch ( coord_type ) {
+        case mpi_matrix_coord_type_band_diagonal:
+            mpi_matrix_coord_init(coord, coord_type, is_row_major, dimensions, k1, k2);
+        default:
+            mpi_matrix_coord_init(coord, coord_type, is_row_major, dimensions);
+            break;
+    }
+        
+    DO_READ(nvalues, sizeof(*nvalues))
+    if ( page_size && (page_size - total_bytes_read != 0) ) total_bytes_read = lseek(fd, (page_size - total_bytes_read), SEEK_CUR);
+    
+    *nbytes_read = total_bytes_read;
+    return true;
+#undef DO_READ
+}
+    
+
+mpi_matrix_storage_ptr
+mpi_matrix_storage_read_from_fd(
+    int                     fd,
+    bool                    is_shared_memory,
+    const char*             *error_msg
+)
+{
+#define DO_READ(P, S)       bytes_read = read(fd, (P), (S)); \
+                            if ( bytes_read < (S) ) { \
+                                if ( error_msg ) *error_msg = "error while reading " #P; \
+                                return NULL; \
+                            } else total_bytes_read += bytes_read;
+                            
+    mpi_matrix_storage_ptr          new_storage = NULL;
+    ssize_t                         bytes_read;
+    size_t                          total_bytes_read = 0;
+    mpi_matrix_storage_type_t       type;
+    mpi_matrix_storage_datatype_t   datatype;
+    mpi_matrix_coord_t              coord;
+    base_int_t                      nvalues;
+    
+    /*
+     * If we fail to read the file header, no sense continuing:
+     */
+    if ( ! __mpi_matrix_storage_read_header_from_fd(fd, &type, &datatype, &coord, &nvalues, &total_bytes_read, error_msg) ) return NULL;
+    
+    switch ( type ) {
+        case mpi_matrix_storage_type_basic: {
+            /*
+             * We're ready to initialize the new storage object:
+             */
+            new_storage = __mpi_matrix_storage_basic_create_immutable(datatype, &coord, ! is_shared_memory);    
+            if ( new_storage ) {
+                if ( is_shared_memory ) {
+                    void            *base_ptr = mmap(
+                                                    NULL,
+                                                    mpi_matrix_coord_element_count(&coord) * mpi_matrix_storage_datatype_byte_sizes[datatype],
+                                                    PROT_READ,
+                                                    MAP_SHARED,
+                                                    fd,
+                                                    total_bytes_read);
+                    if ( base_ptr != MAP_FAILED ) {
+                        switch ( datatype ) {
+                            case mpi_matrix_storage_datatype_real_sp: {
+                                mpi_matrix_storage_basic_real_sp_t* STORAGE = (mpi_matrix_storage_basic_real_sp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->elements = base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_real_dp: {
+                                mpi_matrix_storage_basic_real_dp_t* STORAGE = (mpi_matrix_storage_basic_real_dp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->elements = base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_complex_sp: {
+                                mpi_matrix_storage_basic_complex_sp_t* STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->elements = base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_complex_dp: {
+                                mpi_matrix_storage_basic_complex_dp_t* STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->elements = base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_max:
+                                break;
+                        }
+                    } else {
+                        mpi_matrix_storage_destroy(new_storage);
+                        new_storage = NULL;
+                        if ( error_msg ) *error_msg = "unable to mmap shared memory region";
+                    }
+                } else {
+                    switch ( datatype ) {
+                        case mpi_matrix_storage_datatype_real_sp: {
+                            mpi_matrix_storage_basic_real_sp_t* STORAGE = (mpi_matrix_storage_basic_real_sp_t*)new_storage;
+                            DO_READ(STORAGE->elements, sizeof(float) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_real_dp: {
+                            mpi_matrix_storage_basic_real_dp_t* STORAGE = (mpi_matrix_storage_basic_real_dp_t*)new_storage;
+                            DO_READ(STORAGE->elements, sizeof(double) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_complex_sp: {
+                            mpi_matrix_storage_basic_complex_sp_t* STORAGE = (mpi_matrix_storage_basic_complex_sp_t*)new_storage;
+                            DO_READ(STORAGE->elements, sizeof(complex float) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_complex_dp: {
+                            mpi_matrix_storage_basic_complex_dp_t* STORAGE = (mpi_matrix_storage_basic_complex_dp_t*)new_storage;
+                            DO_READ(STORAGE->elements, sizeof(complex double) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_max:
+                            break;
+                    }
+                }
+            } else {
+                if ( error_msg ) *error_msg = "unable to allocate mpi_matrix_storage object";
+            }
+            break;
+        }
+        
+        case mpi_matrix_storage_type_sparse_coordinate: {
+            /*
+             * We're ready to initialize the new storage object:
+             */
+            new_storage = __mpi_matrix_storage_sparse_coordinate_create_immutable(datatype, &coord, nvalues, ! is_shared_memory);    
+            if ( new_storage ) {
+                if ( is_shared_memory ) {
+                    void            *base_ptr = mmap(
+                                                    NULL,
+                                                    nvalues * (mpi_matrix_storage_datatype_byte_sizes[datatype] + 2 * sizeof(base_int_t)),
+                                                    PROT_READ,
+                                                    MAP_SHARED,
+                                                    fd,
+                                                    total_bytes_read);
+                    if ( base_ptr != MAP_FAILED ) {
+                        switch ( datatype ) {
+                            case mpi_matrix_storage_datatype_real_sp: {
+                                mpi_matrix_storage_sparse_coordinate_real_sp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_sp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->values = (float*)base_ptr; base_ptr += sizeof(float) * nvalues;
+                                STORAGE->primary_indices = (base_int_t*)base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                                STORAGE->secondary_indices = (base_int_t*)base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_real_dp: {
+                                mpi_matrix_storage_sparse_coordinate_real_dp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_dp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->values = (double*)base_ptr; base_ptr += sizeof(double) * nvalues;
+                                STORAGE->primary_indices = (base_int_t*)base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                                STORAGE->secondary_indices = (base_int_t*)base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_complex_sp: {
+                                mpi_matrix_storage_sparse_coordinate_complex_sp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_sp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->values = (complex float*)base_ptr; base_ptr += sizeof(complex float) * nvalues;
+                                STORAGE->primary_indices = (base_int_t*)base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                                STORAGE->secondary_indices = (base_int_t*)base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_complex_dp: {
+                                mpi_matrix_storage_sparse_coordinate_complex_dp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_dp_t*)new_storage;
+                                STORAGE->base.options |= mpi_matrix_storage_options_is_mmap;
+                                STORAGE->values = (complex double*)base_ptr; base_ptr += sizeof(complex double) * nvalues;
+                                STORAGE->primary_indices = (base_int_t*)base_ptr; base_ptr += sizeof(base_int_t) * nvalues;
+                                STORAGE->secondary_indices = (base_int_t*)base_ptr;
+                                break;
+                            }
+                            case mpi_matrix_storage_datatype_max:
+                                break;
+                        }
+                    } else {
+                        mpi_matrix_storage_destroy(new_storage);
+                        new_storage = NULL;
+                        if ( error_msg ) *error_msg = "unable to mmap shared memory region";
+                    }
+                } else {
+                    switch ( datatype ) {
+                        case mpi_matrix_storage_datatype_real_sp: {
+                            mpi_matrix_storage_sparse_coordinate_real_sp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_sp_t*)new_storage;
+                    
+                            DO_READ(STORAGE->values, sizeof(float) * nvalues)
+                            DO_READ(STORAGE->primary_indices, sizeof(base_int_t) * nvalues)
+                            DO_READ(STORAGE->secondary_indices, sizeof(base_int_t) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_real_dp: {
+                            mpi_matrix_storage_sparse_coordinate_real_dp_t  *STORAGE = (mpi_matrix_storage_sparse_coordinate_real_dp_t*)new_storage;
+
+                            DO_READ(STORAGE->values, sizeof(double) * nvalues)
+                            DO_READ(STORAGE->primary_indices, sizeof(base_int_t) * nvalues)
+                            DO_READ(STORAGE->secondary_indices, sizeof(base_int_t) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_complex_sp: {
+                            mpi_matrix_storage_sparse_coordinate_complex_sp_t   *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_sp_t*)new_storage;
+                
+                            DO_READ(STORAGE->values, sizeof(complex float) * nvalues)
+                            DO_READ(STORAGE->primary_indices, sizeof(base_int_t) * nvalues)
+                            DO_READ(STORAGE->secondary_indices, sizeof(base_int_t) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_complex_dp: {
+                            mpi_matrix_storage_sparse_coordinate_complex_dp_t   *STORAGE = (mpi_matrix_storage_sparse_coordinate_complex_dp_t*)new_storage;
+                
+                            DO_READ(STORAGE->values, sizeof(complex double) * nvalues)
+                            DO_READ(STORAGE->primary_indices, sizeof(base_int_t) * nvalues)
+                            DO_READ(STORAGE->secondary_indices, sizeof(base_int_t) * nvalues)
+                            break;
+                        }
+                        case mpi_matrix_storage_datatype_max:
+                            break;
+            
+                    }
+                }
+            } else {
+                if ( error_msg ) *error_msg = "unable to allocate mpi_matrix_storage object";
+            }
+            break;
+        }
+        
+        default: {
+            if ( error_msg ) *error_msg = "invalid matrix type";
+            break;
+        }
+    }
+    return new_storage;
 }

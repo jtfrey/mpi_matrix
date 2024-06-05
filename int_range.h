@@ -3,9 +3,9 @@
 */
 
 /*!
-	@header 32-bit integer range
+	@header Integer range
 	
-	Representation and functionality for a range of 32-bit
+	Representation and functionality for a range of
 	integers.  The range is implemented as the pair (start, length)
 	rather than (start,end), though functions are present to
 	calculate end from (start, length).
@@ -232,5 +232,87 @@ int_range_union(
     r.length = ((end1 < end2) ? end2 : end1) - r.start + 1;
     return r;
 }
+
+/*
+ * @defined int_range_iter_start
+ *
+ * Given the range R, generate a looping construct that iterates
+ * over every integer in the range from start to end.  The value at
+ * each iteration will be assigned to the variable named according
+ * to I_VAR.
+ *
+ * The int_range_iter_start() macro must be balanced by a matching
+ * int_range_iter_end() macro.
+ *
+ * E.g.
+ *
+ *     int_range_iter_start(R, idx)
+ *         // This is the loop body...
+ *         printf("%d\n", (int)idx);
+ *     int_range_iter_end(R, idx)
+ */
+#define int_range_iter_start(R, I_VAR) \
+    { \
+        base_int_t  I_VAR = (R).start, \
+                    R ## _count = (R).length; \
+        while ( R ## _count-- ) {
+
+/*
+ * @defined int_range_iter_end
+ *
+ * An int_range_iter_start() macro must be balanced by a matching
+ * int_range_iter_end() macro.
+ *
+ * E.g.
+ *
+ *     int_range_iter_start(R, idx)
+ *         // This is the loop body...
+ *         printf("%d\n", (int)idx);
+ *     int_range_iter_end(R, idx)
+ */
+#define int_range_iter_end(R, I_VAR) \
+            I_VAR++; \
+        } \
+    }
+
+/*
+ * @defined int_range_reverse_iter_start
+ *
+ * Given the range R, generate a looping construct that iterates
+ * over every integer in the range from end to start.  The value at
+ * each iteration will be assigned to the variable named according
+ * to I_VAR.
+ *
+ * The int_range_reverse_iter_start() macro must be balanced by a matching
+ * int_range_reverse_iter_end() macro.
+ *
+ * E.g.
+ *
+ *     int_range_reverse_iter_start(R, idx)
+ *         // This is the loop body...
+ *         printf("%d\n", (int)idx);
+ *     int_range_reverse_iter_end(R, idx)
+ */
+#define int_range_reverse_iter_start(R, I_VAR) \
+    { \
+        base_int_t  I_VAR = int_range_get_max((R)), \
+        while ( I_VAR-- > (R).start ) {
+
+/*
+ * @defined int_range_reverse_iter_end
+ *
+ * The int_range_reverse_iter_start() macro must be balanced by a matching
+ * int_range_reverse_iter_end() macro.
+ *
+ * E.g.
+ *
+ *     int_range_reverse_iter_start(R, idx)
+ *         // This is the loop body...
+ *         printf("%d\n", (int)idx);
+ *     int_range_reverse_iter_end(R, idx)
+ */
+#define int_range_reverse_iter_end(R, I_VAR) \
+        } \
+    }
 
 #endif /* __INT_RANGE_H__ */

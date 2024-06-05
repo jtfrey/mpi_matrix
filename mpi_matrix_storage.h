@@ -76,6 +76,30 @@ typedef enum {
 const char* mpi_matrix_storage_datatype_get_name(mpi_matrix_storage_datatype_t type);
 
 /*
+ * @constant mpi_matrix_storage_datatype_byte_sizes
+ *
+ * Number of bytes associated with each datatype, ordered by the enum values
+ * in mpi_matrix_storage_datatype_t:  the size of a real_dp is found at
+ * mpi_matrix_storage_datatype_byte_sizes[mpi_matrix_storage_datatype_real_dp].
+ */
+extern const size_t mpi_matrix_storage_datatype_byte_sizes[];
+
+/*
+ * @function mpi_matrix_storage_datatype_get_byte_size_for_count
+ *
+ * Convenience function that computes the number of bytes required by count
+ * elements of the given datatype.
+ */
+static inline size_t
+mpi_matrix_storage_datatype_get_byte_size_for_count(
+    mpi_matrix_storage_datatype_t   datatype,
+    base_int_t                      count
+)
+{
+    return mpi_matrix_storage_datatype_byte_sizes[datatype] * count;
+}
+
+/*
  * @typedef mpi_matrix_storage_ptr
  *
  * An opaque pointer to a mpi_matrix_storage instance.
@@ -109,7 +133,7 @@ typedef size_t (*mpi_matrix_storage_byte_usage_callback)(mpi_matrix_storage_ptr 
  * Returns boolean false if the value could not be cleared, true
  * otherwise.
  */
-typedef bool (*mpi_matrix_storage_clear_callback)(mpi_matrix_storage_ptr storage, bool is_transpose, int_pair_t p);
+typedef bool (*mpi_matrix_storage_clear_callback)(mpi_matrix_storage_ptr storage, mpi_matrix_orient_t orient, int_pair_t p);
 
 /*
  * @typedef mpi_matrix_storage_get_callback
@@ -120,7 +144,7 @@ typedef bool (*mpi_matrix_storage_clear_callback)(mpi_matrix_storage_ptr storage
  * Returns boolean false if the value could not be retrieved, otherwise
  * boolean true and *element is set.
  */
-typedef bool (*mpi_matrix_storage_get_callback)(mpi_matrix_storage_ptr storage, bool is_transpose, int_pair_t p, void *element);
+typedef bool (*mpi_matrix_storage_get_callback)(mpi_matrix_storage_ptr storage, mpi_matrix_orient_t orient, int_pair_t p, void *element);
 
 /*
  * @typedef mpi_matrix_storage_set_callback
@@ -131,7 +155,7 @@ typedef bool (*mpi_matrix_storage_get_callback)(mpi_matrix_storage_ptr storage, 
  * Returns boolean false if the value could not be set, otherwise
  * boolean true.
  */
-typedef bool (*mpi_matrix_storage_set_callback)(mpi_matrix_storage_ptr storage, bool is_transpose, int_pair_t p, void *element);
+typedef bool (*mpi_matrix_storage_set_callback)(mpi_matrix_storage_ptr storage, mpi_matrix_orient_t orient, int_pair_t p, void *element);
 
 /*
  * @typedef mpi_matrix_storage_callbacks_t
@@ -297,5 +321,69 @@ bool
 mpi_matrix_storage_sparse_bst_to_compressed(
     mpi_matrix_storage_ptr      in_storage,
     mpi_matrix_storage_ptr      *out_storage);
+
+/*
+ * @function mpi_matrix_storage_write_to_fd
+ *
+ * Given a matrix, storage, attempt to write the data present in it
+ * to the given file descriptor, fd.  The file will contain data
+ * in a layout that is specific to the storage type, with a common header.
+ *
+ * If the data in the file will be used to mmap() a shared memory segment
+ * into multiple processes, the should_page_align flag must be true.  This
+ * will ensure the payload (all after the header) is on a page boundary.
+ *
+ * Write is currently implemented for basic and sparse (COORDinate)
+ * matrix storage types.
+ *
+ *     header section:
+ *         uint64_t     magic_header = 0x215852544d49504d; //'MPIMTRX!' little endian
+ *         uint32_t     version =      0x00010000;         // 1.0.0 [4B][2B][2B]
+ *         uint8_t      subtype = mpi_matrix_storage_type_basic;
+ *         uint8_t      intsize = (4|8);
+ *         uint8_t      datatype = mpi_matrix_storage_datatype_real_dp;
+ *         uint8_t      coord_type = mpi_matrix_coord_type_upper_triangular;
+ *         uint8_t      is_row_major = (0|1);
+ *         uint32_t     in_file_alignment = (0|<page size>);
+ *         <int_type>   dim_i, dim_j, k1, k2;
+ *         <int_type>   n_values;
+ *           :
+ *          byte padding to page boundary (optional)
+ *           :
+ *
+ *       The padding is introduced if should_page_align is true.  This is primarily
+ *       for the sake of mmap()'ing the file content via shared memory.
+ *
+ *     basic type:
+ *                      ...header section...
+ *         <datatype>   values[nvalues];
+ *
+ *     sparse, coordinate:
+ *                      ...header section...
+ *         <datatype>   values[n_values];
+ *         <int_type>   primary_indices[n_values];
+ *         <int_type>   secondary_indices[n_values];
+ */
+bool
+mpi_matrix_storage_write_to_fd(
+    mpi_matrix_storage_ptr  storage,
+    int                     fd,
+    bool                    should_page_align);
+
+/*
+ * @function mpi_matrix_storage_read_from_fd
+ *
+ * Attempt to allocate and initialize a new matrix from the data in the
+ * given file descriptor, fd.
+ *
+ * If error_msg is non-NULL, *error_msg will be set to a string constant
+ * on error and NULL will be returned.
+ *
+ */
+mpi_matrix_storage_ptr
+mpi_matrix_storage_read_from_fd(
+    int                     fd,
+    bool                    is_shared_memory,
+    const char*             *error_msg);
 
 #endif /* __MPI_MATRIX_COORD_H__ */

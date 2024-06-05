@@ -268,6 +268,26 @@ int_set_push_range(
 //
 
 bool
+int_set_push_seq(
+    int_set_ref S,
+    int_seq_t   s
+)
+{
+    bool       rc = true;
+     
+    int_seq_iter_start(s, s_idx)
+        if ( ! int_set_push_int(S, s_idx) ) {
+            rc = false;
+            break;
+        }
+    int_seq_iter_end(s, s_idx)
+    
+    return rc;
+}
+
+//
+
+bool
 int_set_remove_int(
     int_set_ref S,
     base_int_t  i
@@ -329,9 +349,26 @@ int_set_remove_range(
     int_range_t r
 )
 {
-    bool        rc = false;
+    bool        rc = true;
     
-    while ( r.length-- ) if ( int_set_remove_int(S, r.start++) ) rc = true;
+    while ( r.length-- ) if ( ! int_set_remove_int(S, r.start++) ) rc = false;
+    return rc;
+}
+
+//
+
+bool
+int_set_remove_seq(
+    int_set_ref S,
+    int_seq_t   s
+)
+{
+    bool       rc = true;
+     
+    int_seq_reverse_iter_start(s, s_idx)
+        if ( ! int_set_remove_int(S, s_idx) ) rc = false;
+    int_seq_reverse_iter_end(s, s_idx)
+    
     return rc;
 }
 

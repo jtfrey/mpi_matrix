@@ -3,9 +3,9 @@
 */
 
 /*!
-	@header 32-bit integer pair
+	@header Integer pair
 	
-	Representation and functionality for a pair of 32-bit
+	Representation and functionality for a pair of
 	integers, e.g. acting as a 2D index into a matrix.
 */
 
