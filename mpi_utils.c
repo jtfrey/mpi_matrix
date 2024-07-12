@@ -6,34 +6,117 @@
 //
 
 int
+__mpi_printf_rank()
+{
+    static bool is_inited = false;
+    static int rank;
+    
+    if ( ! is_inited ) {
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        is_inited = true;
+    }
+    return rank;
+}
+
+//
+
+int
+__mpi_printf_size()
+{
+    static bool is_inited = false;
+    static int size;
+    
+    if ( ! is_inited ) {
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
+        is_inited = true;
+    }
+    return size;
+}
+
+//
+
+int
+__mpi_printf_digits()
+{
+    static bool is_inited = false;
+    static int digits;
+    
+    if ( ! is_inited ) {
+        int     size = __mpi_printf_size();
+        digits = 1;
+        while ( size >= 10 ) digits++, size /= 10;
+        is_inited = true;
+    }
+    return digits;
+}
+
+//
+
+int
+mpi_vprintf(
+    int         rank,
+    const char  *fmt,
+    va_list     argv
+)
+{
+    static int  msg_id = 0;
+    int         n = 0, fmt_len = strlen(fmt);
+
+    if ( (rank == -1) || (rank == __mpi_printf_rank()) ) {
+        int     digits = __mpi_printf_digits();
+        
+        n = printf("[%04x][MPI-%0*d:%0*d] ", msg_id, digits, __mpi_printf_rank(), digits, __mpi_printf_size());
+        n += vprintf(fmt, argv);
+        if ( (fmt_len == 0) || (*(fmt + strlen(fmt) - 1) != '\n') ) n += printf("\n");
+    }
+    msg_id++;
+    return n;
+}
+
+//
+
+int
 mpi_printf(
     int         rank,
     const char  *fmt,
     ...
 )
 {
-    static bool is_inited = false;
-    static int _rank, _size, _digits;
-    
     int         n = 0, fmt_len = strlen(fmt);
     va_list     argv;
 
-    if ( ! is_inited ) {
-        int     dummy;
-        
-        MPI_Comm_rank(MPI_COMM_WORLD, &_rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &_size);
-        _digits = 1, dummy = _size;
-        while ( dummy >= 10 ) _digits++, dummy /= 10;
-        is_inited = true;
+    va_start(argv, fmt);
+    n = mpi_vprintf(rank, fmt, argv);
+    va_end(argv);
+    return n;
+}
+
+//
+
+int
+mpi_seq_printf(
+    const char  *fmt,
+    ...
+)
+{
+    int         n, ball;
+    va_list     argv;
+    
+    va_start(argv, fmt);
+    if ( __mpi_printf_rank() == 0 ) {
+        n = mpi_vprintf(__mpi_printf_rank(), fmt, argv);
+        if ( __mpi_printf_size() > 1 ) {
+            MPI_Send(&ball, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+            MPI_Recv(&ball, 1, MPI_INT, __mpi_printf_size() - 1, 0, MPI_COMM_WORLD, NULL);
+        }
+    } else {
+        MPI_Recv(&ball, 1, MPI_INT, __mpi_printf_rank() - 1, 0, MPI_COMM_WORLD, NULL);
+        n = mpi_vprintf(__mpi_printf_rank(), fmt, argv);
+        MPI_Send(&ball, 1, MPI_INT, (__mpi_printf_rank() + 1) % __mpi_printf_size(), 0,MPI_COMM_WORLD);
     }
-    if ( (rank == -1) || (rank == _rank) ) {
-        n = printf("[MPI-%0*d:%0*d][%d] ", _digits, _rank, _digits, _size, getpid());
-        va_start(argv, fmt);
-        n += vprintf(fmt, argv);
-        va_end(argv);
-        if ( (fmt_len == 0) || (*(fmt + strlen(fmt) - 1) != '\n') ) n += printf("\n");
-    }
+    va_end(argv);
+    fflush(stdout);
+    MPI_Barrier(MPI_COMM_WORLD);
     return n;
 }
 

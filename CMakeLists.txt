@@ -48,7 +48,8 @@ set(mpi_matrix_SOURCES
         int_set.c
         mpi_matrix_coord.c
         mpi_matrix_storage.c
-        mpi_matrix_stream.c)
+        mpi_matrix_stream.c
+        mpi_matrix_dist_coord.c)
         
 set(mpi_matrix_HEADERS
         ${CMAKE_CURRENT_BINARY_DIR}/mpi_matrix_config.h
@@ -57,7 +58,8 @@ set(mpi_matrix_HEADERS
         int_set.h
         mpi_utils.h
         mpi_matrix_coord.h
-        mpi_matrix_storage.h)
+        mpi_matrix_storage.h
+        mpi_matrix_dist_coord.h)
 
 if ( ${BUILD_STATIC_LIBS} )
     add_library(mpi_matrix_static STATIC ${mpi_matrix_SOURCES})
@@ -117,6 +119,12 @@ target_compile_options(mpi_matrix_stream_test PRIVATE ${MPI_C_COMPILE_FLAGS})
 target_include_directories(mpi_matrix_stream_test PRIVATE ${MPI_C_INCLUDE_PATH})
 target_link_directories(mpi_matrix_stream_test PRIVATE ${MPI_C_LINK_FLAGS})
 target_link_libraries(mpi_matrix_stream_test PRIVATE Threads::Threads ${MPI_C_LIBRARIES} mpi_matrix_test_lib)
+
+add_executable(mpi_matrix_dist_coord_test mpi_matrix_dist_coord_test.c)
+target_compile_options(mpi_matrix_dist_coord_test PRIVATE ${MPI_C_COMPILE_FLAGS})
+target_include_directories(mpi_matrix_dist_coord_test PRIVATE ${MPI_C_INCLUDE_PATH})
+target_link_directories(mpi_matrix_dist_coord_test PRIVATE ${MPI_C_LINK_FLAGS})
+target_link_libraries(mpi_matrix_dist_coord_test PRIVATE Threads::Threads ${MPI_C_LIBRARIES} mpi_matrix_test_lib)
 
 #
 # Install target(s):

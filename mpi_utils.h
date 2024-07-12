@@ -27,6 +27,8 @@
  */
 int mpi_printf(int rank, const char *fmt, ...);
 
+int mpi_seq_printf(const char *fmt, ...);
+
 /*
  * @function mpi_auto_grid_2d
  *
